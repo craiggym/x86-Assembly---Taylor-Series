@@ -51,7 +51,7 @@ tics: db " tics.", 10, 10, 0
 
 enterRad: db "Please enter a radian value for x and sin(x) will be computed:  ", 0
 enterTerms: db "Enter the number of terms to be included in the computation: ", 0
-sinx: db "The value for sin(x) has been computed.", 0
+sinx: db "The value for sin(x) has been computed.", 10, 0
 
 clockafter: db "The clock after the computation was   ", 0
 clockbefore: db "The clock before the computation was   ", 0
@@ -89,18 +89,11 @@ mov rdi, string								;"%s"
 mov rsi, theTics							;"The CPU time is now "
 call printf								;Calls printf function from the C library
 
-mov rax, 0								;clear the rax register as rdtsc uses this register
-mov rdx, 0								;clear the rdx register as rdtsc uses this register
-rdtsc									;Places the time in tics in rdx:rax
-
-shl rdx, 32								;Shift the lower half of rdx into the higher half so that the higher half of rax and 
-									;be combined with it
-or rdx, rax								;Combine the higher half of rax into the lower half of rdx
-push rdx								;Preserve the information by placing it onto the stack
+clockTime r8								;Takes the current time in tics and places it in r8
 
 mov rax, 0								;SSE will not be used
 mov rdi, int								;"%u" for unsigned
-mov rsi, [rsp]								;The time in tics that was pushed onto the stack earlier
+mov rsi, r8								;The time in tics that was pushed onto the stack earlier
 call printf								;Calls printf function from the C library
 
 mov rax, 0								;SSE will not be used
@@ -113,7 +106,6 @@ mov rdi, string								;"%s"
 mov rsi, enterRad							;Please enter a radian value for x and sin(x) will be computed:  "
 call printf								;Calls printf function from the C library
 
-push qword 0								;Reserving space on the stack for this input
 mov rax, 0								;SSE will not be used
 mov rdi, double								;"%lf"
 mov rsi, rsp								;stack area
@@ -140,14 +132,26 @@ mov rsi, string								;"%s"
 mov rdi, clockafter							;"The clock after the computation was   "
 call printf								;Calls printf function from the C library
 
-mov rax, 0
-mov rdx, 0
-rdtsc
+clockTime r9								;Takes the current time in tics and places it in r9. This will be used for computing
+									;the amount of time from the function call.
+
+;=============================================== Pre-conditions before entering loop ===============================================================================
+;Before going into loop I will be using:
+;  r14: Will hold the number of terms for the computation
+;  r13: Will be the counter
+;  xmm0: Will hold the old(and initial) term which will change every time nextterm is called. The result will be added to the sum (xmm15).
+;  xmm1: Will hold the fixed value for x which was taken from user input
+;  xmm15: Will hold the accumulated sum
+;===================================================================================================================================================================
+movsd xmm0, [rsp]
+movsd xmm1, [rsp+8]
+
+topofloop:
+
+outofloop:
 
 
 ;------------------ Popping
-pop rax
-pop rax
 pop rax
 
 restoreGPRs
