@@ -39,6 +39,7 @@
 ;===== Begin area for source code==========================================================================================================================================
 global TaylorCompute
 %include "utilities.inc"
+%include "debug.inc"
 
 extern nextterm
 extern printf
@@ -140,13 +141,25 @@ clockTime r9								;Takes the current time in tics and places it in r9. This wi
 ;  r14: Will hold the number of terms for the computation
 ;  r13: Will be the counter
 ;  xmm0: Will hold the old(and initial) term which will change every time nextterm is called. The result will be added to the sum (xmm15).
-;  xmm1: Will hold the fixed value for x which was taken from user input
-;  xmm15: Will hold the accumulated sum
+;  xmm1: Will hold the fixed value of x which was taken from user input
+;  xmm7: Will hold the accumulated sum
 ;===================================================================================================================================================================
-movsd xmm0, [rsp]
-movsd xmm1, [rsp+8]
+movsd xmm0, [rsp]							;Holds old(and initial) term from user input
+movsd xmm1, [rsp]							;Holds fixed value of x from user input
+movsd xmm7, [rsp]							;Holds the accumulated sum
+mov r14, [rsp+8]							;Holds the number of terms for the computation
 
-topofloop:
+topofloop:								;BEGIN LOOP
+cmp r13, r14								;Compare the counter with the number of terms for the computation
+jge outofloop								;If greater or equal then jump out of the loop
+
+mov rdi, r13								;Move the current iteration number into rdi to use as n for the computation
+call nextterm								;Calls the user-defined C++ function which computes the sin(x) using Taylor series method
+
+inc r13									;Increment the counter after the computation has completed
+addsd xmm7, xmm0							;Add the result from the computation to xmm7, the register accumulating the sum
+jmp topofloop								;Jump back to the top and re-iterate
+showxmmregisters 5
 
 outofloop:
 
