@@ -71,6 +71,7 @@ newline2: db 10, 10, 0
 string: db "%s", 0
 double: db "%lf", 0
 int: db "%u", 0
+int2: db "%i", 0
 
 segment .bss
 
@@ -112,19 +113,14 @@ mov rdi, double								;"%lf"
 mov rsi, rsp								;stack area
 call scanf								;Call scanf function from the C library.
 
-movsd xmm0, [rsp]							;Holds old(and initial) term from user input
-movsd xmm1, [rsp]							;Holds fixed value of x from user input
-movsd xmm7, [rsp]							;Holds the accumulated sum
-saveSC
-
 mov rax, 0								;SSE will not be used
 mov rdi, string								;"%s"
 mov rsi, enterTerms							;"Enter the number of terms to be included in the computation: "
 call printf								;Calls printf function from the C library
 
-;push qword 0								;Reserving space on the stack for this input
+push qword 0								;Reserving space on the stack for this input
 mov rax, 0								;SSE will not be used
-mov rdi, double								;"%lf"
+mov rdi, int								;"%u"
 mov rsi, rsp								;stack area
 call scanf								;Call scanf function from the C library.
 
@@ -132,12 +128,6 @@ mov rax, 0								;SSE will not be used
 mov rsi, string								;"%s"
 mov rdi, sinx								;"The value for sin(x) has been computed."
 call printf								;Calls printf function from the C library
-
-mov rax, 0								;SSE will not be used
-mov rsi, string								;"%s"
-mov rdi, clockafter							;"The clock after the computation was   "
-call printf								;Calls printf function from the C library
-
 
 clockTime r9								;Takes the current time in tics and places it in r9. This will be used for computing
 									;the amount of time from the function call.
@@ -150,8 +140,10 @@ clockTime r9								;Takes the current time in tics and places it in r9. This wi
 ;  xmm1: Will hold the fixed value of x which was taken from user input
 ;  xmm7: Will hold the accumulated sum
 ;===================================================================================================================================================================
-
-mov r14, [rsp+8]							;Holds the number of terms for the computation
+movsd xmm0, [rsp+8]							;Holds old(and initial) term from user input
+movsd xmm1, [rsp+8]							;Holds fixed value of x from user input
+movsd xmm7, [rsp+8]							;Holds the accumulated sum
+mov r14, [rsp]								;Holds the number of terms for the computation
 mov r13, 0
 
 topofloop:								;BEGIN LOOP
@@ -159,19 +151,44 @@ cmp r13, r14								;Compare the counter with the number of terms for the comput
 jge outofloop								;If greater or equal then jump out of the loop
 
 mov rdi, r13								;Move the current iteration number into rdi to use as n for the computation
-showregisters 15
 call nextterm								;Calls the user-defined C++ function which computes the sin(x) using Taylor series method
 
 inc r13									;Increment the counter after the computation has completed
 addsd xmm7, xmm0							;Add the result from the computation to xmm7, the register accumulating the sum
 jmp topofloop								;Jump back to the top and re-iterate
 
-
 outofloop:
+saveSC 7
 
+mov rax, 0								;SSE will not be used
+mov rsi, string								;"%s"
+mov rdi, clockafter							;"The clock after the computation was   "
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rsi, string								;"%s"
+mov rdi, clockbefore							;"The clock before the computation was   "
+call printf								;Calls printf function from the C library
+
+mov rax, 0
+mov rsi, string
+mov rdi, compReqA
+call printf
+
+restoreSC 7
+push qword 0
+mov qword rax, 1
+mov rdi, double
+call printf
+pop rax
+
+mov rax, 0
+mov rsi, string
+mov rdi, newline2
+call printf
 
 ;------------------ Popping
-;pop rax
+pop rax
 
 restoreGPRs
 
