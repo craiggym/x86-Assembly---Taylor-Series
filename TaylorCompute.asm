@@ -70,8 +70,7 @@ newline2: db 10, 10, 0
 
 string: db "%s", 0
 double: db "%lf", 0
-int: db "%u", 0
-int2: db "%i", 0
+int: db "%lu", 0
 
 segment .bss
 
@@ -150,6 +149,7 @@ topofloop:								;BEGIN LOOP
 cmp r13, r14								;Compare the counter with the number of terms for the computation
 jge outofloop								;If greater or equal then jump out of the loop
 
+;movsd xmm0, xmm7
 mov rdi, r13								;Move the current iteration number into rdi to use as n for the computation
 call nextterm								;Calls the user-defined C++ function which computes the sin(x) using Taylor series method
 
@@ -176,6 +176,9 @@ mov rdi, compReqA
 call printf
 
 restoreSC 7
+movsd xmm0, xmm7
+
+
 push qword 0
 mov qword rax, 1
 mov rdi, double
