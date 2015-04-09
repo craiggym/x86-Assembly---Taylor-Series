@@ -145,18 +145,48 @@ movsd xmm7, [rsp+8]							;Holds the accumulated sum
 mov r14, [rsp]								;Holds the number of terms for the computation
 mov r13, 1
 
+movsd xmm4, xmm0
 topofloop:								;BEGIN LOOP
 cmp r13, r14								;Compare the counter with the number of terms for the computation
 jge outofloop								;If greater or equal then jump out of the loop
 
+
 mov rdi, r13								;Move the current iteration number into rdi to use as n for the computation
+movsd xmm0, xmm4
+movsd xmm1, [rsp+8]
 call nextterm								;Calls the user-defined C++ function which computes the sin(x) using Taylor series method
 
 inc r13									;Increment the counter after the computation has completed
 addsd xmm7, xmm0							;Add the result from the computation to xmm7, the register accumulating the sum
+;**---- EXperimENTING ----**********
+movsd xmm4, xmm0
+
+saveSC 7
+push qword 0
+mov qword rax, 1
+mov rdi, double
+call printf
+pop rax
+
+mov rax, 0
+mov rsi, string
+mov rdi, newline
+call printf
+restoreSC 7
+;**---- EXperimENTING ----**********
 jmp topofloop								;Jump back to the top and re-iterate
 
 outofloop:
+push qword 0
+mov qword rax, 1
+mov rdi, double
+call printf
+pop rax
+
+mov rax, 0
+mov rsi, string
+mov rdi, newline2
+call printf
 
 
 mov rax, 0								;SSE will not be used
@@ -173,14 +203,6 @@ mov rax, 0
 mov rsi, string
 mov rdi, compReqA
 call printf
-
-
-
-push qword 0
-mov qword rax, 1
-mov rdi, double
-call printf
-pop rax
 
 mov rax, 0
 mov rsi, string
