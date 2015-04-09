@@ -48,13 +48,14 @@ extern scanf
 segment .data
 doWhat: db "This program will compute Sin(x) with high accuracy.", 10, 0
 theTics: db "The CPU time is now ", 0
-tics: db " tics.", 10, 10, 0
+tics: db " tics", 10, 0
+ticscomma: db " tics, ", 0
 
 enterRad: db "Please enter a radian value for x and sin(x) will be computed:  ", 0
 enterTerms: db "Enter the number of terms to be included in the computation: ", 0
 sinx: db "The value for sin(x) has been computed.", 10, 0
 
-clockafter: db "The clock after the computation was   ", 0
+clockafter: db "The clock after the computation was    ", 0
 clockbefore: db "The clock before the computation was   ", 0
 
 compReqA: db "The computation required 	 	", 0
@@ -62,15 +63,25 @@ comReqB: db " tics, which equals ", 0
 comReqC: db " nanoseconds = ", 0
 compReqD: db " seconds.", 10, 0
 
-sinxResult: db "Sin(x) =  ", 10, 0
+sinxResult: db "Sin(x) =  ", 0
 lastTaylor: db "The last term in the Taylor series was ", 0
+
+ticsconvert: db "which equals ", 0
+
+nano: db " nanoseconds = ", 0
+seconds: db " seconds.", 10, 0
 
 newline: db 10, 0
 newline2: db 10, 10, 0
 
 string: db "%s", 0
+longg: db "%ld", 0
 double: db "%lf", 0
-int: db "%lu", 0
+double2: db "%.25lf", 0
+time: db "%lu", 0
+
+GHz: dq 2.40, 0
+secConv: dq 0.000000001, 0
 
 segment .bss
 
@@ -93,7 +104,7 @@ call printf								;Calls printf function from the C library
 clockTime r8								;Takes the current time in tics and places it in r8
 
 mov rax, 0								;SSE will not be used
-mov rdi, int								;"%u" for unsigned
+mov rdi, time								;"%lu" for unsigned
 mov rsi, r8								;The time in tics that was pushed onto the stack earlier
 call printf								;Calls printf function from the C library
 
@@ -119,7 +130,7 @@ call printf								;Calls printf function from the C library
 
 push qword 0								;Reserving space on the stack for this input
 mov rax, 0								;SSE will not be used
-mov rdi, int								;"%u"
+mov rdi, time								;"%l"
 mov rsi, rsp								;stack area
 call scanf								;Call scanf function from the C library.
 
@@ -128,8 +139,15 @@ mov rsi, string								;"%s"
 mov rdi, sinx								;"The value for sin(x) has been computed."
 call printf								;Calls printf function from the C library
 
+mov rax, 0								;SSE will not be used
+mov rsi, string								;"%s"
+mov rdi, clockafter							;"The clock after the computation was   "
+call printf								;Calls printf function from the C library
+
 clockTime r9								;Takes the current time in tics and places it in r9. This will be used for computing
 									;the amount of time from the function call.
+
+push r9
 
 ;=============================================== Pre-conditions before entering loop ===============================================================================
 ;Before going into loop I will be using:
@@ -139,59 +157,38 @@ clockTime r9								;Takes the current time in tics and places it in r9. This wi
 ;  xmm1: Will hold the fixed value of x which was taken from user input
 ;  xmm7: Will hold the accumulated sum
 ;===================================================================================================================================================================
-movsd xmm0, [rsp+8]							;Holds old(and initial) term from user input
-movsd xmm1, [rsp+8]							;Holds fixed value of x from user input
-movsd xmm7, [rsp+8]							;Holds the accumulated sum
-mov r14, [rsp]								;Holds the number of terms for the computation
+movsd xmm0, [rsp+16]							;Holds old(and initial) term from user input
+movsd xmm1, [rsp+16]							;Holds fixed value of x from user input
+movsd xmm7, [rsp+16]							;Holds the accumulated sum
+mov r14, [rsp+8]								;Holds the number of terms for the computation
 mov r13, 1
 
-movsd xmm4, xmm0
 topofloop:								;BEGIN LOOP
 cmp r13, r14								;Compare the counter with the number of terms for the computation
 jge outofloop								;If greater or equal then jump out of the loop
 
-
 mov rdi, r13								;Move the current iteration number into rdi to use as n for the computation
-movsd xmm0, xmm4
-movsd xmm1, [rsp+8]
+movsd xmm1, [rsp+16]							;Needed to refresh the fixed x value per loop. Without this, xmm1's data was corrupted.
 call nextterm								;Calls the user-defined C++ function which computes the sin(x) using Taylor series method
 
 inc r13									;Increment the counter after the computation has completed
 addsd xmm7, xmm0							;Add the result from the computation to xmm7, the register accumulating the sum
-;**---- EXperimENTING ----**********
-movsd xmm4, xmm0
-
-saveSC 7
-push qword 0
-mov qword rax, 1
-mov rdi, double
-call printf
-pop rax
-
-mov rax, 0
-mov rsi, string
-mov rdi, newline
-call printf
-restoreSC 7
-;**---- EXperimENTING ----**********
 jmp topofloop								;Jump back to the top and re-iterate
 
+;========================= OUT OF LOOP
 outofloop:
-push qword 0
-mov qword rax, 1
-mov rdi, double
-call printf
-pop rax
-
-mov rax, 0
-mov rsi, string
-mov rdi, newline2
-call printf
-
+saveSC 7								;Backing up the xmm registers. Keeping xmm0(last term) and xmm7(accumulator = sin(x))
+clockTime r10
+push r10
 
 mov rax, 0								;SSE will not be used
-mov rsi, string								;"%s"
-mov rdi, clockafter							;"The clock after the computation was   "
+mov rdi, time								;"%lu" for unsigned
+mov rsi, [rsp]								;The time in tics that was pushed onto the stack earlier
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, tics								;" tics."
 call printf								;Calls printf function from the C library
 
 mov rax, 0								;SSE will not be used
@@ -199,16 +196,126 @@ mov rsi, string								;"%s"
 mov rdi, clockbefore							;"The clock before the computation was   "
 call printf								;Calls printf function from the C library
 
+mov rax, 0								;SSE will not be used
+mov rdi, time								;"%lu" for unsigned
+mov rsi, [rsp+8]								;The time in tics that was pushed onto the stack earlier
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, tics								;" tics."
+call printf								;Calls printf function from the C library
+
 mov rax, 0
 mov rsi, string
 mov rdi, compReqA
 call printf
 
+;-----** START Time computation
+pop r10
+pop r9
+
+restoreSC 7	;xmm0 xmm7 keep...
+movsd xmm4, xmm0 ;backing it up...
+
+cvtsi2sd xmm5, r9 ;Holds the time before
+cvtsi2sd xmm6, r10 ;Holds the time after
+
+subsd xmm6, xmm5
+movsd xmm0, xmm6
+
+saveSC 7; xmm0(time total), xmm4(last term), xmm5(time before), xmm6(time after->subtracted = time total), xmm7(accumulator)
+
+push qword 0
+mov qword rax, 1
+mov rdi, double
+call printf
+pop rax
+
 mov rax, 0
 mov rsi, string
-mov rdi, newline2
+mov rdi, ticscomma
 call printf
+;-----** END Time computation
 
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, ticsconvert							;
+call printf								;Calls printf function from the C library
+
+restoreSC 7
+movsd xmm2, [GHz]
+divsd xmm0, xmm2
+
+saveSC 7
+
+push qword 0
+mov qword rax, 1
+mov rdi, double
+call printf 
+pop rax
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, nano								;
+call printf								;Calls printf function from the C library
+
+restoreSC 7
+movsd xmm2, [secConv]
+mulsd xmm0, xmm2
+saveSC 7
+
+
+push qword 0
+mov qword rax, 1
+mov rdi, double
+call printf 
+pop rax
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, seconds							;
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, sinxResult							;
+call printf								;Calls printf function from the C library
+
+restoreSC 7
+movsd xmm6, xmm0 ;back up the seconds
+movsd xmm0, xmm7
+saveSC 7
+
+push qword 0
+mov qword rax, 1
+mov rdi, double
+call printf 
+pop rax
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, newline							;
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, lastTaylor							;
+call printf								;Calls printf function from the C library
+
+restoreSC 7
+movsd xmm0, xmm4
+push qword 0
+mov qword rax, 1
+mov rdi, double
+call printf 
+pop rax
+
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, newline							;
+call printf								;Calls printf function from the C library
 ;------------------ Popping
 pop rax
 
