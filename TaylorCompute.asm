@@ -88,6 +88,7 @@ segment .bss
 segment .text
 
 TaylorCompute:
+mov r15, rax
 
 saveGPRs
 
@@ -223,7 +224,7 @@ cvtsi2sd xmm6, r10 ;Holds the time after
 
 subsd xmm6, xmm5
 movsd xmm0, xmm6
-
+movsd xmm3, xmm0 ;xmm3 backs up the nanoseconds which will be outputted at the end
 saveSC 7; xmm0(time total), xmm4(last term), xmm5(time before), xmm6(time after->subtracted = time total), xmm7(accumulator)
 
 push qword 0
@@ -311,13 +312,18 @@ mov rdi, double
 call printf 
 pop rax
 
-
 mov rax, 0								;SSE will not be used
 mov rdi, string								;"%s"
 mov rsi, newline							;
 call printf								;Calls printf function from the C library
 ;------------------ Popping
 pop rax
+
+;before restore, push onto stack to preserve
+restoreSC 7
+;mov the last term into xmm0
+movsd [rsp], xmm3
+mov [r15], rsp;mov the nanoseconds into rax
 
 restoreGPRs
 
