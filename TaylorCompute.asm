@@ -224,7 +224,7 @@ cvtsi2sd xmm6, r10 ;Holds the time after
 
 subsd xmm6, xmm5
 movsd xmm0, xmm6
-movsd xmm3, xmm0 ;xmm3 backs up the nanoseconds which will be outputted at the end
+;movsd xmm3, xmm0 ;xmm3 backs up the nanoseconds which will be outputted at the end
 saveSC 7; xmm0(time total), xmm4(last term), xmm5(time before), xmm6(time after->subtracted = time total), xmm7(accumulator)
 
 push qword 0
@@ -247,6 +247,7 @@ call printf								;Calls printf function from the C library
 restoreSC 7
 movsd xmm2, [GHz]
 divsd xmm0, xmm2
+movsd xmm3, xmm0
 
 saveSC 7
 
@@ -320,12 +321,15 @@ call printf								;Calls printf function from the C library
 pop rax
 
 ;before restore, push onto stack to preserve
-restoreSC 7
+
 ;mov the last term into xmm0
-movsd [rsp], xmm3
-mov [r15], rsp;mov the nanoseconds into rax
+
 
 restoreGPRs
+restoreSC 7
+
+movsd [r15], xmm3
+
 
 ret
 

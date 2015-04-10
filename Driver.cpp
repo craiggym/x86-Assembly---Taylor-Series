@@ -2,7 +2,7 @@
 #include <iomanip>
 
 using namespace std;
-extern "C" double TaylorCompute(double * term);
+extern "C" double TaylorCompute(double *term);
 
 int main()
 {
@@ -11,8 +11,8 @@ int main()
 
  double *nano = new double;
  double lastterm = TaylorCompute(nano);
-
- cout << "Thank you. The driver received these two numbers: " << nano << " and " << fixed << setprecision(18) << lastterm <<endl;
+ 
+ cout << "Thank you. The driver received these two numbers: " << lastterm << " and " << *nano <<endl;
  cout << "Enjoy your trigonometry Bye." << endl;
  cout << "The driver will now return error code 0 to the OS indicating successful completion.\n"<< endl;
 return 0;
