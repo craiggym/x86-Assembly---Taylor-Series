@@ -77,7 +77,7 @@ longg: db "%ld", 0
 double: db "%lf", 0
 lastformat: db "%1.80lf", 0
 time: db "%lu", 0
-convTime: db "%4.0lf", 0
+convTime: db "%.0lf", 0
 
 GHz: dq 2.40, 0
 secConv: dq 0.000000001, 0						;The amount needed to multiply with nanoseconds to obtain seconds.
@@ -87,7 +87,7 @@ segment .bss
 segment .text
 
 TaylorCompute:
-mov r15, rax
+mov r15, rdi								;r15 holds the address of rax so that it can be returned to the driver
 
 saveGPRs
 
@@ -151,17 +151,19 @@ mov rsi, string								;"%s"
 mov rdi, clockafter							;"The clock after the computation was   "
 call printf								;Calls printf function from the C library
 
-clockTime r9								;Takes the current time in tics and places it in r9. This will be used for computing
-									;the amount of time from the function call.
+clockTime r9								;Takes the current time in tics and places it in r9.
 
-push r9									;Save the recorded time onto the stack.
-
+push r9									;Save the recorded time onto the stack so that we can compute the duration afterwards.
+;\\ STACK \\
+;[ r9 ] <--- r9 is holding the number of tics before the Taylor computation to compute the duration [rsp]
+;[ # of terms ] <--- The # of terms which is taken from user input [rsp+8]
+;[ X ] <--- The X value which is taken from user input [rsp+16]
 
 ;=============================================== Pre-conditions before entering loop ===============================================================================
 ;Before going into loop I will be using:
 ;  r14: Will hold the number of terms for the computation
 ;  r13: Will be the counter
-;  xmm0: Will hold the old(and initial) term which will change every time nextterm is called. The result will be added to the sum (xmm15).
+;  xmm0: Will hold the old(and initial) term which will change every time nextterm is called. The result will be added to the accumulator (xmm7).
 ;  xmm1: Will hold the fixed value of x which was taken from user input
 ;  xmm7: Will hold the accumulated sum
 ;===================================================================================================================================================================
@@ -169,8 +171,9 @@ movsd xmm0, [rsp+16]							;Holds old(and initial) term from user input
 movsd xmm1, [rsp+16]							;Holds fixed value of x from user input
 movsd xmm7, [rsp+16]							;Holds the accumulated sum
 mov r14, [rsp+8]							;Holds the number of terms for the computation
-mov r13, 1
+mov r13, 1								;Start from 1
 
+;======================= TOP OF LOOP ========================================================================================================
 topofloop:								;BEGIN LOOP
 cmp r13, r14								;Compare the counter with the number of terms for the computation
 jge outofloop								;If greater or equal then jump out of the loop
@@ -183,15 +186,36 @@ inc r13									;Increment the counter after the computation has completed
 addsd xmm7, xmm0							;Add the result from the computation to xmm7, the register accumulating the sum
 jmp topofloop								;Jump back to the top and re-iterate
 
-;========================= OUT OF LOOP
+;========================= OUT OF LOOP =======================================================================================================
 outofloop:
 saveSC 7								;Backing up the xmm registers. Keeping xmm0(last term) and xmm7(accumulator = sin(x))
-clockTime r10
-push r10
+clockTime r10								;Takes the current time in tics and places it in r10. 
+push r10								;Save the time in tics on the stack.
+
+;\\ STACK \\
+;[ r10 ] <--- r10 is holding the number of tics after the Taylor computation [rsp]
+;[ r9 ] <--- r9 is holding the number of tics before the Taylor computation [rsp+8]
+;[ # of terms ] <--- The # of terms which is taken from user input [rsp+16]
+;[ X ] <--- The X value which is taken from user input [rsp+24]
 
 mov rax, 0								;SSE will not be used
 mov rdi, time								;"%lu" for unsigned
-mov rsi, [rsp]								;The time in tics that was pushed onto the stack earlier
+mov rsi, [rsp]								;The time in tics from after the computation
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, tics								;" tics.\n"
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rsi, string								;"%s"
+mov rdi, clockbefore							;"The clock before the computation was   "
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rdi, time								;time format: "%lu" for unsigned
+mov rsi, [rsp+8]							;The time in tics that was pushed onto the stack before Taylor computation
 call printf								;Calls printf function from the C library
 
 mov rax, 0								;SSE will not be used
@@ -201,142 +225,165 @@ call printf								;Calls printf function from the C library
 
 mov rax, 0								;SSE will not be used
 mov rsi, string								;"%s"
-mov rdi, clockbefore							;"The clock before the computation was   "
+mov rdi, compReqA							;"The computation required 	"
 call printf								;Calls printf function from the C library
 
-mov rax, 0								;SSE will not be used
-mov rdi, time								;"%lu" for unsigned
-mov rsi, [rsp+8]							;The time in tics that was pushed onto the stack earlier
-call printf								;Calls printf function from the C library
+;============================ Math for Taylor Computation Duration ======================================================================
+pop r10									;r10 holds the value after the Taylor computation
+pop r9									;r9 holds the value before the Taylor computation
 
-mov rax, 0								;SSE will not be used
-mov rdi, string								;"%s"
-mov rsi, tics								;" tics."
-call printf								;Calls printf function from the C library
+;\\ STACK \\
+;[ # of terms ] <--- The # of terms which is taken from user input [rsp]
+;[ X ] <--- The X value which is taken from user input [rsp+8]
 
-mov rax, 0
-mov rsi, string
-mov rdi, compReqA
-call printf
+restoreSC 7								;Restore the xmm registers for some arithmetic
+movsd xmm4, xmm0 							;Backing up the last number in the Taylor series into xmm4
 
-;-----** START Time computation
-pop r10
-pop r9
+cvtsi2sd xmm5, r9							;Convert the time before Taylor computation to a float value for xmm5 to hold
+cvtsi2sd xmm6, r10 							;Convert the time after Taylor computation to a float value for xmm6 to hold
 
-restoreSC 7	;xmm0 xmm7 keep...
-movsd xmm4, xmm0 ;backing it up...
+subsd xmm6, xmm5							;Since the time after is of greater value (time increases in tics),
+									;we subtract before from after to obtain the total computation time.
+movsd xmm0, xmm6							;Move the result into xmm0 so that we can print it
 
-cvtsi2sd xmm5, r9 ;Holds the time before
-cvtsi2sd xmm6, r10 ;Holds the time after
+saveSC 7								;Save the components
+									;xmm0(time total), xmm4(last term), xmm5(time before), xmm6(time total), xmm7(accumulator)
 
-subsd xmm6, xmm5
-movsd xmm0, xmm6
-;movsd xmm3, xmm0 ;xmm3 backs up the nanoseconds which will be outputted at the end
-saveSC 7; xmm0(time total), xmm4(last term), xmm5(time before), xmm6(time after->subtracted = time total), xmm7(accumulator)
-
-push qword 0
-mov qword rax, 1
-mov rdi, convTime
-call printf
-pop rax
-
-;mov rax, 0
-;mov rsi, string
-;mov rdi, ticscomma
-;call printf
-;-----** END Time computation
+push qword 0								;Make room in the stack for this print
+mov qword rax, 1							;We will be using only one xmm register
+mov rdi, convTime							;".0lf" We don't want a decimal for tics
+call printf								;Calls the printf function from the C library
+pop rax									;Done using the stack space so reverting back by popping
+;============================END Math for Taylor Computation Duration END======================================================================
 
 mov rax, 0								;SSE will not be used
 mov rdi, string								;"%s"
-mov rsi, compReqB							;
+mov rsi, compReqB							;" tics, which equals "
 call printf								;Calls printf function from the C library
 
-restoreSC 7
-movsd xmm2, [GHz]
-divsd xmm0, xmm2
-movsd xmm3, xmm0
+restoreSC 7								;Restore the xmm components
+									;xmm0(time total), xmm4(last term), xmm5(time before), xmm6(time total), xmm7(accumulator)
 
-saveSC 7
+movsd xmm2, [GHz]							;xmm2 will hold my computer's clockspeed (2.40 GHz)					
+divsd xmm0, xmm2							;time total in tics divided by 2.4 to equal nanoseconds. Store result in xmm0 register.
+movsd xmm3, xmm0							;back up the nanoseconds in xmm3
 
-push qword 0
-mov qword rax, 1
-mov rdi, convTime
-call printf 
-pop rax
+saveSC 7								;Save the components
+									;xmm0(time total in nanoseconds), xmm2(GHz), xmm3(time total in nanoseconds backed up),
+									;xmm4(last term), xmm5(time before), xmm6(time total), xmm7(accumulator)
+
+push qword 0								;Make room in the stack for this print
+mov qword rax, 1							;We will be using only one xmm register
+mov rdi, convTime							;"%.0lf"
+call printf 								;Call printf function from the C library
+pop rax									;Done using the stack space so reverting back by popping
 
 mov rax, 0								;SSE will not be used
 mov rdi, string								;"%s"
 mov rsi, compReqC							;" nanoseconds = "
 call printf								;Calls printf function from the C library
 
-restoreSC 7
-movsd xmm2, [secConv]
-mulsd xmm0, xmm2
-saveSC 7
+restoreSC 7								;Restore the components
+									;xmm0(time total in nanoseconds), xmm2(GHz), xmm3(time total in nanoseconds backed up),
+									;xmm4(last term), xmm5(time before), xmm6(time total), xmm7(accumulator)
+
+movsd xmm2, [secConv]							;Since we're done using xmm2's GHz for multiplication, we'll re-use it to hold the number
+									;for converting nanoseconds into seconds (0.000000001)
+mulsd xmm0, xmm2							;Multiply total nanoseconds with conversion number to get total in seconds		
+
+saveSC 7								;Save the components
+									;xmm0(time total in seconds), xmm2(0.000000001), xmm3(time total in nanoseconds),
+									;xmm4(last term), xmm5(time before), xmm6(time total), xmm7(accumulator)
 
 
-push qword 0
-mov qword rax, 1
-mov rdi, double
-call printf 
+push qword 0								;Make room in the stack for this print
+mov qword rax, 1							;We will be using only one xmm register
+mov rdi, double								;"%lf"
+call printf 								;Calls printf function from the C library
+pop rax									;Done with using the stack space so reverting back by popping
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, seconds							;" seconds."
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, sinxResult							;"Sin(x) =  "
+call printf								;Calls printf function from the C library
+
+restoreSC 7								;Restore the components
+									;xmm0(time total in seconds), xmm2(0.000000001), xmm3(time total in nanoseconds),
+									;xmm4(last term), xmm5(time before), xmm6(time total), xmm7(accumulator)
+
+movsd xmm6, xmm0 							;Backing up the time total in seconds into xmm6
+movsd xmm0, xmm7							;Moving the accumulator into xmm0 for printing
+
+saveSC 7 								;Save the components
+									;xmm0(Accumulator), xmm2(0.000000001), xmm3(time total in nanoseconds),
+									;xmm4(last term), xmm5(time before), xmm6(Time total in seconds), xmm7(accumulator)
+
+push qword 0								;Make room in the stack for this print
+mov qword rax, 1							;We will be using only one xmm register
+mov rdi, double								;"%lf"
+call printf 								;Calls printf function from the C library
+pop rax									;Done with using the stack space so reverting back by popping
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, newline							;"\n"
+call printf								;Calls printf function from the C library
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, lastTaylor							;"The last term in the Taylor series was "
+call printf								;Calls printf function from the C library
+
+restoreSC 7								;Restore the components
+									;xmm0(Accumulator), xmm2(0.000000001), xmm3(time total in nanoseconds),
+									;xmm4(last term), xmm5(time before), xmm6(Time total in seconds), xmm7(accumulator)
+
+movsd xmm0, xmm4							;Move the last term from the Taylor Series into xmm0 for printing
+
+saveSC 7								;Save the components
+									;xmm0(last term), xmm2(0.000000001), xmm3(time total in nanoseconds),
+									;xmm4(last term), xmm5(time before), xmm6(Time total in seconds), xmm7(accumulator)
+
+push qword 0								;Make room in the stack for this print
+mov qword rax, 1							;We will be using only one xmm register
+mov rdi, lastformat							;"%1.80lf" so that we can retain the data from very large Term #'s
+call printf 								;Calls printf function from the C library
+pop rax									;Done with using the stack space so reverting back by popping
+
+mov rax, 0								;SSE will not be used
+mov rdi, string								;"%s"
+mov rsi, newline							;"\n"
+call printf								;Calls printf function from the C library
+
+;------------------ Popping the remaining stack data -------------------------------------------------------------------------
+;\\ STACK \\
+;[ # of terms ] <--- The # of terms which is taken from user input [rsp]
+;[ X ] <--- The X value which is taken from user input [rsp+8]
+
 pop rax
 
-mov rax, 0								;SSE will not be used
-mov rdi, string								;"%s"
-mov rsi, seconds							;
-call printf								;Calls printf function from the C library
+;\\ STACK \\
+;[ X ] <--- The X value which is taken from user input [rsp+8]
 
-mov rax, 0								;SSE will not be used
-mov rdi, string								;"%s"
-mov rsi, sinxResult							;
-call printf								;Calls printf function from the C library
+restoreGPRs								;Get our registers back to their original state
 
-restoreSC 7
-movsd xmm6, xmm0 ;back up the seconds
-movsd xmm0, xmm7
-saveSC 7
+restoreSC 7								;Restore the xmm registers
+									;xmm0(last term), xmm2(0.000000001), xmm3(time total in nanoseconds),
+									;xmm4(last term), xmm5(time before), xmm6(Time total in seconds), xmm7(accumulator)
 
-push qword 0
-mov qword rax, 1
-mov rdi, double
-call printf 
-pop rax
-
-mov rax, 0								;SSE will not be used
-mov rdi, string								;"%s"
-mov rsi, newline							;
-call printf								;Calls printf function from the C library
-
-mov rax, 0								;SSE will not be used
-mov rdi, string								;"%s"
-mov rsi, lastTaylor							;
-call printf								;Calls printf function from the C library
-
-restoreSC 7
-movsd xmm0, xmm4
-saveSC 7
-push qword 0
-mov qword rax, 1
-mov rdi, lastformat
-call printf 
-pop rax
-
-
-mov rax, 0								;SSE will not be used
-mov rdi, string								;"%s"
-mov rsi, newline							;
-call printf								;Calls printf function from the C library
-;------------------ Popping
-pop rax
-;before restore, push onto stack to preserve
-
-;mov the last term into xmm0
-
-
-restoreGPRs
-restoreSC 7
-
-movsd [r15], xmm3
+movsd [r15], xmm3							;Total time in nanoseconds will be returned via rax. xmm0 will return the last term.
+xorps xmm1, xmm1
+xorps xmm2, xmm2
+xorps xmm3, xmm3
+xorps xmm4, xmm4
+xorps xmm5, xmm5
+xorps xmm6, xmm6
+xorps xmm7, xmm7
 
 ret
 
