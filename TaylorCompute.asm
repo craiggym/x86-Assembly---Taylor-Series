@@ -58,17 +58,15 @@ sinx: db "The value for sin(x) has been computed.", 10, 0
 clockafter: db "The clock after the computation was    ", 0
 clockbefore: db "The clock before the computation was   ", 0
 
-compReqA: db "The computation required 	 	", 0
-comReqB: db " tics, which equals ", 0
-comReqC: db " nanoseconds = ", 0
+compReqA: db "The computation required 	", 0
+compReqB: db " tics, which equals ", 0
+compReqC: db " nanoseconds = ", 0
 compReqD: db " seconds.", 10, 0
 
 sinxResult: db "Sin(x) =  ", 0
 lastTaylor: db "The last term in the Taylor series was ", 0
 
 ticsconvert: db "which equals ", 0
-
-nano: db " nanoseconds = ", 0
 seconds: db " seconds.", 10, 0
 
 newline: db 10, 0
@@ -77,11 +75,12 @@ newline2: db 10, 10, 0
 string: db "%s", 0
 longg: db "%ld", 0
 double: db "%lf", 0
-double2: db "%.25lf", 0
+lastformat: db "%1.80lf", 0
 time: db "%lu", 0
+convTime: db "%4.0lf", 0
 
 GHz: dq 2.40, 0
-secConv: dq 0.000000001, 0
+secConv: dq 0.000000001, 0						;The amount needed to multiply with nanoseconds to obtain seconds.
 
 segment .bss
 
@@ -105,7 +104,7 @@ call printf								;Calls printf function from the C library
 clockTime r8								;Takes the current time in tics and places it in r8
 
 mov rax, 0								;SSE will not be used
-mov rdi, time								;"%lu" for unsigned
+mov rdi, time								;time format being "%lu" for unsigned long
 mov rsi, r8								;The time in tics that was pushed onto the stack earlier
 call printf								;Calls printf function from the C library
 
@@ -124,6 +123,9 @@ mov rdi, double								;"%lf"
 mov rsi, rsp								;stack area
 call scanf								;Call scanf function from the C library.
 
+;\\ STACK \\
+;[ X ] <--- The X value which is taken from user input [rsp]
+
 mov rax, 0								;SSE will not be used
 mov rdi, string								;"%s"
 mov rsi, enterTerms							;"Enter the number of terms to be included in the computation: "
@@ -131,9 +133,13 @@ call printf								;Calls printf function from the C library
 
 push qword 0								;Reserving space on the stack for this input
 mov rax, 0								;SSE will not be used
-mov rdi, time								;"%l"
+mov rdi, time								;Recycling the format from time since number of terms will not be float: "%lu"
 mov rsi, rsp								;stack area
 call scanf								;Call scanf function from the C library.
+
+;\\ STACK \\
+;[ # of terms ] <--- The # of terms which is taken from user input [rsp]
+;[ X ] <--- The X value which is taken from user input [rsp+8]
 
 mov rax, 0								;SSE will not be used
 mov rsi, string								;"%s"
@@ -148,7 +154,8 @@ call printf								;Calls printf function from the C library
 clockTime r9								;Takes the current time in tics and places it in r9. This will be used for computing
 									;the amount of time from the function call.
 
-push r9
+push r9									;Save the recorded time onto the stack.
+
 
 ;=============================================== Pre-conditions before entering loop ===============================================================================
 ;Before going into loop I will be using:
@@ -161,7 +168,7 @@ push r9
 movsd xmm0, [rsp+16]							;Holds old(and initial) term from user input
 movsd xmm1, [rsp+16]							;Holds fixed value of x from user input
 movsd xmm7, [rsp+16]							;Holds the accumulated sum
-mov r14, [rsp+8]								;Holds the number of terms for the computation
+mov r14, [rsp+8]							;Holds the number of terms for the computation
 mov r13, 1
 
 topofloop:								;BEGIN LOOP
@@ -199,7 +206,7 @@ call printf								;Calls printf function from the C library
 
 mov rax, 0								;SSE will not be used
 mov rdi, time								;"%lu" for unsigned
-mov rsi, [rsp+8]								;The time in tics that was pushed onto the stack earlier
+mov rsi, [rsp+8]							;The time in tics that was pushed onto the stack earlier
 call printf								;Calls printf function from the C library
 
 mov rax, 0								;SSE will not be used
@@ -229,19 +236,19 @@ saveSC 7; xmm0(time total), xmm4(last term), xmm5(time before), xmm6(time after-
 
 push qword 0
 mov qword rax, 1
-mov rdi, double
+mov rdi, convTime
 call printf
 pop rax
 
-mov rax, 0
-mov rsi, string
-mov rdi, ticscomma
-call printf
+;mov rax, 0
+;mov rsi, string
+;mov rdi, ticscomma
+;call printf
 ;-----** END Time computation
 
 mov rax, 0								;SSE will not be used
 mov rdi, string								;"%s"
-mov rsi, ticsconvert							;
+mov rsi, compReqB							;
 call printf								;Calls printf function from the C library
 
 restoreSC 7
@@ -253,13 +260,13 @@ saveSC 7
 
 push qword 0
 mov qword rax, 1
-mov rdi, double
+mov rdi, convTime
 call printf 
 pop rax
 
 mov rax, 0								;SSE will not be used
 mov rdi, string								;"%s"
-mov rsi, nano								;
+mov rsi, compReqC							;" nanoseconds = "
 call printf								;Calls printf function from the C library
 
 restoreSC 7
@@ -307,11 +314,13 @@ call printf								;Calls printf function from the C library
 
 restoreSC 7
 movsd xmm0, xmm4
+saveSC 7
 push qword 0
 mov qword rax, 1
-mov rdi, double
+mov rdi, lastformat
 call printf 
 pop rax
+
 
 mov rax, 0								;SSE will not be used
 mov rdi, string								;"%s"
@@ -319,7 +328,6 @@ mov rsi, newline							;
 call printf								;Calls printf function from the C library
 ;------------------ Popping
 pop rax
-
 ;before restore, push onto stack to preserve
 
 ;mov the last term into xmm0
@@ -329,7 +337,6 @@ restoreGPRs
 restoreSC 7
 
 movsd [r15], xmm3
-
 
 ret
 
